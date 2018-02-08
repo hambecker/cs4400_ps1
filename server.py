@@ -15,21 +15,28 @@ Last Updated: 1/26/18
 """
 
 def process_socket(connectionSocket):
+    keepRec =True
     # begin receiving a message
-    request_partial = connectionSocket.recv(1024).decode()
+    # request_partial = connectionSocket.recv(2048).decode()
     request = ""
+    message_num = 1;
 
     # Loop until the terminator of the message has been received
-    while request_partial != "\r\n":
-        request = request + request_partial + " "
-        request_partial = connectionSocket.recv(1024).decode()
+    while keepRec:
+        request_partial = connectionSocket.recv(2048).decode()
+        request = request + request_partial
+        message_num = message_num + 1
+        print(request)
+        if request.endswith('\r\n\r\n') or request_partial == '\r\n':
+            keepRec = False
 
-    # Adjust the received messages to create a parameters array of all the strings received
-    requestRemoveLastWhiteSpace = request.strip()
-    parameters = requestRemoveLastWhiteSpace.split(' ')
+    parameters = request.split(' ')
+
+    print(parameters)
 
     # response string to send back to the requesting client
     response = ""
+
 
     # make sure the correct amount of parameters have been received
     if not (len(parameters) == 3 or len(parameters) == 5):
@@ -47,7 +54,7 @@ def process_socket(connectionSocket):
             connectionSocket.close()
             return
         # Check to make sure the third parameter was a HTTP/1.0 request
-        if parameters[2] != "HTTP/1.0":
+        if parameters[2] != "HTTP/1.0\r\n\r\n":
             response = "HTTP/1.1 400 Bad Request\r\n" + "ERROR: Did not receive a HTTP/1.0 request\r\n"+"\r\n"
             connectionSocket.send(response.encode())
             connectionSocket.close()
