@@ -187,6 +187,7 @@ def process_socket(connectionSocket):
 
 if __name__ == "__main__":
     # Check for correct input from the command line start
+    api_key = "edc304dfb7d285fd815e7cf8c4ed5eb993d4c9995fe83465e1391017c4ef393a"
     if len(sys.argv)> 2:
         print("you did not enter in the correct amount of arguments, please enter only a port number")
         exit(1)
