@@ -23,29 +23,62 @@ def process_socket(connectionSocket):
 
     # Loop until the terminator of the message has been received
     while keepRec:
-        request_partial = connectionSocket.recv(2048).decode()
+        request_partial = connectionSocket.recv(4096).decode("unicode_escape")
         request = request + request_partial
         message_num = message_num + 1
-        print(request)
         if request.endswith('\r\n\r\n') or request_partial == '\r\n':
             keepRec = False
 
     parameters = request.split(' ')
 
-    print(parameters)
-
     # response string to send back to the requesting client
     response = ""
 
+    #Process firefox request
+    if 'User-Agent: Mozilla' in request:
+        # Default port
+        requestPort = 80
+
+        # urlparse creates an object that can be used to put the request together
+        parsedURL = urlparse(parameters[1])
+
+        # default port
+        requestPort = 80
+
+        # if request does not use the default port, change it
+        if parsedURL.port is not None:
+            requestPort = parsedURL.port
+
+        # create a socket from the proxy server to the requested server
+        requestSocket = socket(AF_INET, SOCK_STREAM)
+        requestSocket.connect((parsedURL.netloc, requestPort))
+
+        # send the request to the requested server
+        requestSocket.send(request.encode())
+
+        print('waiting for response')
+        # receive the output from the server
+        response = requestSocket.recv(1024)
+        print('recieve response')
+        while len(response) != 0:
+            print('send to client')
+            connectionSocket.send(response)
+            response = requestSocket.recv(1024)
+            print('recieve response')
+
+
+        # requestSocket.close()
+        # connectionSocket.close()
+        
 
     # make sure the correct amount of parameters have been received
-    if not (len(parameters) == 3 or len(parameters) == 5):
+    elif not (len(parameters) == 3 or len(parameters) == 5):
         response = "HTTP/1.1 400 Bad Request\r\n" + "ERROR: wrong amount of parameters in request\r\n"+"\r\n"
         connectionSocket.send(response.encode())
         connectionSocket.close()
         return
 
-    if len(parameters) == 3:
+    elif len(parameters) == 3:
 
         # Check to make sure that the first parameter was get
         if parameters[0] != "GET":
@@ -92,8 +125,8 @@ def process_socket(connectionSocket):
             connectionSocket.send(response)
             response = requestSocket.recv(1024)
 
-        requestSocket.close()
-        connectionSocket.close()
+        # requestSocket.close()
+        # connectionSocket.close()
 
 
     else:
@@ -144,8 +177,8 @@ def process_socket(connectionSocket):
             connectionSocket.send(response)
             response = requestSocket.recv(1024)
 
-        requestSocket.close()
-        connectionSocket.close()
+        # requestSocket.close()
+        # connectionSocket.close()
 
 if __name__ == "__main__":
     # Check for correct input from the command line start
