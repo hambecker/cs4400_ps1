@@ -9,8 +9,11 @@ import requests
 Proxy Server for Assignment pa1
 
 This server is designed to take http requests from a client, parse them and then forward it to the correct
-desired destination specified by the request.  The server then takes the response and then relays it back 
-to the client and now handles concurrent requests from multiple connections.
+desired destination specified by the request.  The server than takes the response sends it to totalvirus.com
+via an api call and checks the response against well known malware files.  If there is no malware detected,
+the file will then be forwarded on to the client.  If there is malware, the server will not forward the content
+to the client and it will instead give a warning message about the content.  This server is built to withstand multiple
+concurrent requests
 
 Created by: Alec Becker
 Last Updated: 2/10/18
@@ -28,6 +31,8 @@ def process_malware_detection(request_response):
                             params=params, headers=headers)
     json_response = response.json()
 
+    print(json_response)
+
     return json_response
 
 
@@ -44,13 +49,7 @@ def process_socket(connectionSocket):
         try:
             request_partial = connectionSocket.recv(4096).decode("unicode_escape")
         except Exception as e: # update the time stamp
-            response_message = 'HTTP/1.1 400 Bad Request\r\n' \
-                              'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                              'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                              'Content-Length: 297\r\n' \
-                               'Connection: close\r\n' \
-                               'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                               '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
+            response_message = 'HTTP/1.1 400 Bad Request\r\n\r\n' \
                                '<html>' \
                                '<head>' \
                                '<title>404 Not Found</title>' \
@@ -74,6 +73,8 @@ def process_socket(connectionSocket):
         if badRec:
             return
 
+    print(request)
+
     # response string to send back to the requesting client
     response = ""
 
@@ -96,6 +97,7 @@ def process_socket(connectionSocket):
 
         # create a socket from the proxy server to the requested server
         requestSocket = socket(AF_INET, SOCK_STREAM)
+
         requestSocket.connect((parsedURL.netloc, requestPort))
 
         request = request.replace('Connection: keep-alive', 'Connection: close')
@@ -119,24 +121,20 @@ def process_socket(connectionSocket):
                     connectionSocket.send(response)
                 else:
                     # implement virus response to client
-                    malware_detection = 'HTTP/1.1 400 Bad Request\r\n' \
-                              'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                              'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                              'Content-Length: 297\r\n' \
-                               'Connection: close\r\n' \
-                               'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                               '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
-                               '<html>' \
-                               '<head>' \
-                               '<title>MalWareDetected</title>' \
-                               '</head>' \
-                               '<body>' \
-                               '<h1>MalWare Detected</h1>' \
-                               '<p>Do Not Continue</p>' \
-                               '<hr>' \
-                               '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
-                               '</body>' \
-                               '</html>'
+                    malware_detection = 'HTTP/1.0 200 OK\r\n' \
+                                        'Connection: close\r\n' \
+                                        '<html>' \
+                                        '<head>' \
+                                        '<title>MalWareDetected</title>' \
+                                        '</head>' \
+                                        '<body>' \
+                                        '<h1>MalWare Detected</h1>' \
+                                        '<p>Do Not Continue</p>' \
+                                        '<hr>' \
+                                        '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
+                                        '</body>' \
+                                        '</html>'
+                    connectionSocket.send(malware_detection.encode())
             else:
                 connectionSocket.send(response)
         else:
@@ -160,9 +158,19 @@ def process_socket(connectionSocket):
         if parsedURL.port is not None:
             requestPort = parsedURL.port
 
+        print(parsedURL.netloc)
+        print(requestPort)
         # create a socket from the proxy server to the requested server
         requestSocket = socket(AF_INET, SOCK_STREAM)
-        requestSocket.connect((parsedURL.netloc, requestPort))
+
+        split_on_colon = parsedURL.netloc.split(':')
+        if len(split_on_colon) > 1:
+            requestSocket.connect((split_on_colon[0], requestPort))
+        else:
+            requestSocket.connect((parsedURL.netloc, requestPort))
+
+        replace_string = 'http://' + parsedURL.netloc
+        request =  request.replace(replace_string, '')
 
         request = request.replace('Proxy-Connection: Keep-Alive', 'connection: close')
 
@@ -181,6 +189,8 @@ def process_socket(connectionSocket):
 
         malware_split = response.split(b'\r\n\r\n')
 
+        print(malware_split)
+
         if len(malware_split) >= 2:
             virus_response = process_malware_detection(malware_split[1])
             if 'positives' in virus_response:
@@ -188,24 +198,20 @@ def process_socket(connectionSocket):
                     connectionSocket.send(response)
                 else:
                     # implement virus response to client
-                    malware_detection = 'HTTP/1.1 400 Bad Request\r\n' \
-                              'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                              'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                              'Content-Length: 297\r\n' \
-                               'Connection: close\r\n' \
-                               'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                               '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
-                               '<html>' \
-                               '<head>' \
-                               '<title>MalWareDetected</title>' \
-                               '</head>' \
-                               '<body>' \
-                               '<h1>MalWare Detected</h1>' \
-                               '<p>Do Not Continue</p>' \
-                               '<hr>' \
-                               '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
-                               '</body>' \
-                               '</html>'
+                    malware_detection = 'HTTP/1.0 200 OK\r\n' \
+                                        'Connection: close\r\n' \
+                                        '<html>' \
+                                        '<head>' \
+                                        '<title>MalWareDetected</title>' \
+                                        '</head>' \
+                                        '<body>' \
+                                        '<h1>MalWare Detected</h1>' \
+                                        '<p>Do Not Continue</p>' \
+                                        '<hr>' \
+                                        '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
+                                        '</body>' \
+                                        '</html>'
+                    connectionSocket.send(malware_detection.encode())
             else:
                 connectionSocket.send(response)
         else:
@@ -231,10 +237,17 @@ def process_socket(connectionSocket):
         # create a socket from the proxy server to the requested server
         requestSocket = socket(AF_INET, SOCK_STREAM)
 
-        requestSocket.connect((parsedURL.netloc, requestPort))
+        split_on_colon = parsedURL.netloc.split(':')
+        if len(split_on_colon) > 1:
+            requestSocket.connect((split_on_colon[0], requestPort))
+        else:
+            requestSocket.connect((parsedURL.netloc, requestPort))
 
+        replace_string = 'http://' + parsedURL.netloc
+        request =  request.replace(replace_string, '')
         request = request.replace('Proxy-Connection: Keep-Alive', 'connection: close')
 
+        print(request)
         # send the request to the requested server
         requestSocket.send(request.encode())
 
@@ -244,11 +257,12 @@ def process_socket(connectionSocket):
         while True:
             recievedbytes = requestSocket.recv(1024)
             response = response + recievedbytes
+            print(recievedbytes)
             if not recievedbytes:
                 break
-
+        print("here1")
         malware_split = response.split(b'\r\n\r\n')
-
+        print("here2")
         if len(malware_split) >= 2:
             virus_response = process_malware_detection(malware_split[1])
             if 'positives' in virus_response:
@@ -256,13 +270,8 @@ def process_socket(connectionSocket):
                     connectionSocket.send(response)
                 else:
                     # implement virus response to client
-                    malware_detection = 'HTTP/1.1 400 Bad Request\r\n' \
-                                        'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                                        'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                                        'Content-Length: 297\r\n' \
+                    malware_detection = 'HTTP/1.0 200 OK\r\n' \
                                         'Connection: close\r\n' \
-                                        'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                                        '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
                                         '<html>' \
                                         '<head>' \
                                         '<title>MalWareDetected</title>' \
@@ -274,6 +283,7 @@ def process_socket(connectionSocket):
                                         '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
                                         '</body>' \
                                         '</html>'
+                    connectionSocket.send(malware_detection.encode())
             else:
                 connectionSocket.send(response)
         else:
@@ -319,9 +329,18 @@ def process_socket(connectionSocket):
             if parsedURL.port is not None:
                 requestPort = parsedURL.port
 
+
+
             # create a socket from the proxy server to the requested server
             requestSocket = socket(AF_INET, SOCK_STREAM)
-            requestSocket.connect((parsedURL.netloc, requestPort))
+
+            split_on_colon = parsedURL.netloc.split(':')
+            if len(split_on_colon) > 1:
+                print(split_on_colon)
+                requestSocket.connect((split_on_colon[0], requestPort))
+            else:
+                print(parsedURL.netloc)
+                requestSocket.connect((parsedURL.netloc, requestPort))
 
             # build the request strings
             if parsedURL.path is not "":
@@ -343,7 +362,7 @@ def process_socket(connectionSocket):
                 response = response + recievedbytes
                 if not recievedbytes:
                     break
-
+            # Get the body of the message so you can run it through the malware detector
             malware_split = response.split(b'\r\n\r\n')
 
             if len(malware_split) >= 2:
@@ -353,13 +372,8 @@ def process_socket(connectionSocket):
                         connectionSocket.send(response)
                     else:
                         # implement virus response to client
-                        malware_detection = 'HTTP/1.1 400 Bad Request\r\n' \
-                                            'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                                            'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                                            'Content-Length: 297\r\n' \
+                        malware_detection = 'HTTP/1.0 200 OK\r\n' \
                                             'Connection: close\r\n' \
-                                            'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                                            '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
                                             '<html>' \
                                             '<head>' \
                                             '<title>MalWareDetected</title>' \
@@ -371,6 +385,7 @@ def process_socket(connectionSocket):
                                             '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
                                             '</body>' \
                                             '</html>'
+                        connectionSocket.send(malware_detection.encode())
                 else:
                     connectionSocket.send(response)
             else:
@@ -439,13 +454,8 @@ def process_socket(connectionSocket):
                         connectionSocket.send(response)
                     else:
                         # implement virus response to client
-                        malware_detection = 'HTTP/1.1 400 Bad Request\r\n' \
-                                            'Date: Sat, 10 Feb 2018 20:27:47 GMT\r\n' \
-                                            'Server: Apache/2.4.7 (Ubuntu)\r\n' \
-                                            'Content-Length: 297\r\n' \
+                        malware_detection = 'HTTP/1.0 200 OK\r\n' \
                                             'Connection: close\r\n' \
-                                            'Content-Type: text/html; charset=iso-8859-1\r\n\r\n' \
-                                            '<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">' \
                                             '<html>' \
                                             '<head>' \
                                             '<title>MalWareDetected</title>' \
@@ -457,6 +467,7 @@ def process_socket(connectionSocket):
                                             '<address>Apache/2.4.7 (Ubuntu) Server at www.cs.utah.edu Port 80</address>' \
                                             '</body>' \
                                             '</html>'
+                        connectionSocket.send(malware_detection.encode())
                 else:
                     connectionSocket.send(response)
             else:
@@ -467,20 +478,13 @@ def process_socket(connectionSocket):
 
 if __name__ == "__main__":
     # Check for correct input from the command line start
-    api_key = "edc304dfb7d285fd815e7cf8c4ed5eb993d4c9995fe83465e1391017c4ef393a"
-    if len(sys.argv)> 3:
-        print("you did not enter in the correct amount of arguments, please enter only a port number")
-        exit(1)
-
-    elif len(sys.argv) == 1:
-        print("please enter in a port no when running the executable: ")
+    api_key = ""
+    if len(sys.argv) != 3:
+        print("you did not enter in the correct amount of arguments, please enter only a port number and one API Key")
         exit(1)
 
     else:
         serverPort = int(sys.argv[1])
-
-    # Optional API Key to be entered via command line argument
-    if len(sys.argv) == 3:
         api_key = sys.argv[2]
 
     # Create a server and have it begin listening
